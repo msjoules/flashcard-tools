@@ -1,0 +1,14 @@
+{
+  "timeZone": "America/New_York",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "gmail": {
+    "name": "Save Attachments",
+    "logoUrl": "https://img.icons8.com/glyph-neue/64/40C057/circled-right-2.png",
+    "homepageTrigger": {
+      "runFunction": "buildAddon",
+      "enabled": true
+    }
+  }
+}

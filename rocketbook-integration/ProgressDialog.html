@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      html, body {
+        padding: 0;
+        margin: 0;
+        background-color: #f9f9f9;
+        overflow: hidden; /* Prevents scrollbars from appearing */
+        font-family: Arial, sans-serif;
+      }
+
+      .container {
+        padding: 8px 12px;
+      }
+
+      /* Ultra-slim progress bar */
+      .progress-container {
+        width: 100%;
+        background-color: #e0e0e0;
+        border-radius: 2px;
+        overflow: hidden;
+        height: 4px; /* Reduced bar thickness */
+        margin-bottom: 6px;
+      }
+
+      .progress-bar {
+        width: 0%;
+        height: 100%;
+        background-color: #4CAF50;
+        transition: width 0.2s ease-in-out;
+      }
+
+      #status {
+        font-size: 11px;
+        color: #555555;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="progress-container">
+        <div id="bar" class="progress-bar"></div>
+      </div>
+      <div id="status">Initializing import...</div>
+    </div>
+
+    <script>
+      window.onload = function() {
+        if (typeof google === 'undefined' || !google.script) {
+          document.getElementById('status').innerText = "Error: Google API host missing.";
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(startImportProcess)
+          .withFailureHandler(handleError)
+          .getImportMetadata();
+      };
+
+      function startImportProcess(data) {
+        if (!data || data.totalPairs === 0) {
+          document.getElementById('status').innerText = "No images found to import.";
+          setTimeout(() => google.script.host.close(), 1500);
+          return;
+        }
+
+        let currentIndex = 0;
+        const totalPairs = data.totalPairs;
+
+        function processNextPair() {
+          if (currentIndex >= totalPairs) {
+            document.getElementById('status').innerText = "Import complete!";
+            document.getElementById('bar').style.width = "100%";
+            setTimeout(() => google.script.host.close(), 1000);
+            return;
+          }
+
+          const percent = Math.round((currentIndex / totalPairs) * 100);
+          document.getElementById('bar').style.width = percent + "%";
+          document.getElementById('status').innerText = `Card ${currentIndex + 1} of ${totalPairs}...`;
+
+          google.script.run
+            .withSuccessHandler(() => {
+              currentIndex++;
+              processNextPair();
+            })
+            .withFailureHandler(handleError)
+            .importSinglePair(currentIndex);
+        }
+
+        processNextPair();
+      }
+
+      function handleError(error) {
+        document.getElementById('status').innerText = "Error: " + (error.message || error);
+        document.getElementById('bar').style.backgroundColor = "#f44336";
+      }
+    </script>
+  </body>
+</html>
