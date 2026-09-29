@@ -7,6 +7,7 @@ function onOpen() {
     .addItem("Create Cards", "createCardsPrompt")
     .addItem("Shuffle Cards", "shuffleFlashcards")
     .addItem("Restore Sequential Order", "restoreOrder")
+    .addItem('Re-index Cards (Fix Gaps)', 'runReindex')
     .addToUi();
 }
 
@@ -20,16 +21,26 @@ function indexSlideDeck(presentation) {
   presentation.getSlides().forEach(slide => {
     const elements = slide.getPageElements();
 
-    for (let element of elements) {
+    // Helper function to process individual shapes or text boxes
+    function checkElement(element) {
       try {
+        if (element.getPageElementType() === SlidesApp.PageElementType.GROUP) {
+          // Unpack grouped objects (circle + text box overlay)
+          element.asGroup().getChildren().forEach(checkElement);
+          return;
+        }
+
         if (element.getPageElementType() === SlidesApp.PageElementType.SHAPE) {
           const shape = element.asShape();
+          const shapeType = shape.getShapeType();
 
+          // Check Rectangles, Ellipses, AND Text Boxes
           if (
-            (shape.getShapeType() === SlidesApp.ShapeType.RECTANGLE ||
-            shape.getShapeType() === SlidesApp.ShapeType.ELLIPSE) &&
+            (shapeType === SlidesApp.ShapeType.RECTANGLE ||
+             shapeType === SlidesApp.ShapeType.ELLIPSE ||
+             shapeType === SlidesApp.ShapeType.TEXT_BOX) &&
             shape.getWidth() <= 60 &&
-            shape.getHeight() <= 60                       
+            shape.getHeight() <= 60
           ) {
             const textRange = shape.getText();
             if (textRange) {
@@ -44,7 +55,6 @@ function indexSlideDeck(presentation) {
 
                 if (!cardMap[num]) cardMap[num] = [];
                 cardMap[num].push({ slide, type });
-                break;
               }
             }
           }
@@ -53,6 +63,8 @@ function indexSlideDeck(presentation) {
         // Ignore layout-specific shape issues
       }
     }
+
+    elements.forEach(checkElement);
   });
 
   return { cardMap, maxNumber };
@@ -129,28 +141,46 @@ function buildBaseFlashcard(slide, left, top, width, height) {
  * ADD CORNER LABEL
  ************************************************************/
 function addCornerLabel(slide, labelText) {
-  const diameter = 36;
+  const x = 10;
+  const y = 10;
+  const diameter = 36; 
 
-  const shape = slide.insertShape(
+  const circle = slide.insertShape(
     SlidesApp.ShapeType.ELLIPSE,
-    10, 10,
+    x, y,
     diameter, diameter
   );
 
-  shape.getFill().setSolidFill("#FFD54F");
-  const border = shape.getBorder();
+  circle.getFill().setSolidFill("#FFD54F");
+  const border = circle.getBorder();
   border.setWeight(1);
   border.getLineFill().setSolidFill("#FBC02D");
 
-  const text = shape.getText();
-  text.setText(labelText);
+  const textBoxWidth = 50; 
+  const offsetX = x - (textBoxWidth - diameter) / 2; // Center text box over circle
+
+  const textBox = slide.insertTextBox(
+    labelText,
+    offsetX, y,
+    textBoxWidth, diameter
+  );
+
+  // Vertical Centering inside text box
+  textBox.setContentAlignment(SlidesApp.ContentAlignment.MIDDLE);
+
+  const text = textBox.getText();
 
   const style = text.getTextStyle();
   style.setBold(true);
   style.setFontSize(8);
+  style.setFontFamily("Arial");
   style.setForegroundColor("#000000");
 
+  // Horizontal Centering
   text.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
+
+  // Group circle & text box together
+  slide.group([circle, textBox]);
 }
 
 /************************************************************
@@ -239,5 +269,53 @@ function restoreOrder() {
     const pair = cardMap[num];
     pair.sort((a, b) => (a.type === "F" ? -1 : 1));
     pair.forEach(item => item.slide.move(newIndex++));
+  });
+}
+
+/************************************************************
+ * RE-INDEX DECK
+ ************************************************************/
+function runReindex() {
+  const presentation = SlidesApp.getActivePresentation();
+
+  restoreOrder();
+  reindexDeck(presentation);
+}
+
+function reindexDeck(presentation) {
+  const { cardMap } = indexSlideDeck(presentation);
+
+  const cardNumbers = Object.keys(cardMap).map(Number).sort((a, b) => a - b);
+
+  let newCounter = 1;
+
+  cardNumbers.forEach(oldNum => {
+    const pair = cardMap[oldNum];
+
+    pair.forEach(cardObj => {
+      const elements = cardObj.slide.getPageElements();
+
+      elements.forEach(element => {
+        function updateText(el) {
+          if (el.getPageElementType() === SlidesApp.PageElementType.GROUP) {
+            el.asGroup().getChildren().forEach(updateText);
+          } else if (el.getPageElementType() === SlidesApp.PageElementType.SHAPE) {
+            const shape = el.asShape();
+            const textRange = shape.getText();
+
+            if (textRange) {
+              const text = textRange.asString().trim();
+
+              if (text.toUpperCase() === `${oldNum}${cardObj.type}`) {
+                textRange.setText(`${newCounter}${cardObj.type}`);
+              }
+            }
+          }
+        }
+        updateText(element);
+      });
+    });
+
+    newCounter++;
   });
 }
